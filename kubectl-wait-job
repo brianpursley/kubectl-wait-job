@@ -53,8 +53,8 @@ cleanup() {
 trap cleanup EXIT
 
 # Create temporary files to store stderr output
-COMPLETE_STDERR=$(mktemp -t kubectl-wait-job-stderr.XXXXXXXXXX) || { echo "Failed to create temp file"; exit 3; }
-FAILED_STDERR=$(mktemp -t kubectl-wait-job-stderr.XXXXXXXXXX) || { echo "Failed to create temp file"; exit 3; }
+COMPLETE_STDERR=$(mktemp -t kubectl-wait-job-stderr.XXXXXXXXXX) || { echo "error: failed to create temp file"; exit 3; }
+FAILED_STDERR=$(mktemp -t kubectl-wait-job-stderr.XXXXXXXXXX) || { echo "error: failed to create temp file"; exit 3; }
 
 # Wait for complete and failed conditions in parallel
 kubectl wait job "$@" --for=condition=complete > /dev/null 2> "$COMPLETE_STDERR" &
@@ -65,7 +65,7 @@ FAILED_PID=$!
 # Wait for one of the processes to exit (using loop instead of wait -n for compatibility)
 while true; do
     # Check if the process waiting for the job to complete has exited
-    COMPLETE_RESULT=0
+    unset COMPLETE_RESULT
     if ! kill -0 "$COMPLETE_PID" 2>/dev/null; then
         wait $COMPLETE_PID;
         COMPLETE_RESULT=$?
@@ -76,7 +76,7 @@ while true; do
     fi
 
     # Check if the process waiting for the job to fail has exited
-    FAILED_RESULT=0
+    unset FAILED_RESULT
     if ! kill -0 "$FAILED_PID" 2>/dev/null; then
         wait $FAILED_PID
         FAILED_RESULT=$?
@@ -87,7 +87,7 @@ while true; do
     fi
     
     # If either process failed, print the stderr output and exit
-    if [[ $COMPLETE_RESULT -ne 0 || $FAILED_RESULT -ne 0 ]]; then
+    if [[ -n $COMPLETE_RESULT || -n $FAILED_RESULT ]]; then
         cat "$COMPLETE_STDERR" 2> /dev/null
         cat "$FAILED_STDERR" 2> /dev/null
         echo "error: kubectl wait failed"
