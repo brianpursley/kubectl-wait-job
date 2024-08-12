@@ -39,14 +39,16 @@ done
 kubectl wait job "$@" --for=condition=complete > /dev/null &
 COMPLETE_PID=$!
 
-kubectl wait job "$@" --for=condition=failed > /dev/null 2> /dev/null &
+kubectl wait job "$@" --for=condition=failed > /dev/null &
 FAILED_PID=$!
+
+# Cleanup any remaining background processes on exit
+trap 'kill "$COMPLETE_PID" "$FAILED_PID" 2>/dev/null' EXIT
 
 # Wait for one of the processes to exit
 while true; do
     # If the process waiting for complete condition has exited, check if it was successful, kill the other process and exit
     if ! kill -0 "$COMPLETE_PID" 2>/dev/null; then        
-        kill "$FAILED_PID" > /dev/null 2>&1
         if wait "$COMPLETE_PID"; then
             echo "Job completed successfully"
             exit 0
@@ -58,7 +60,6 @@ while true; do
     
     # If the process waiting for failed condition has exited, check if it was successful, kill the other process and exit
     if ! kill -0 "$FAILED_PID" 2>/dev/null; then
-        kill "$COMPLETE_PID" > /dev/null 2>&1
         if wait "$FAILED_PID"; then
             echo "Job failed"
             exit 1
