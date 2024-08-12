@@ -35,39 +35,65 @@ for arg in "$@"; do
     fi
 done
 
-# Wait for complete and failed conditions in parallel
-kubectl wait job "$@" --for=condition=complete > /dev/null &
-COMPLETE_PID=$!
+# Cleanup
+cleanup() {
+    if [[ -n $COMPLETE_STDERR ]]; then
+        rm -f "$COMPLETE_STDERR" 2> /dev/null
+    fi
+    if [[ -n $FAILED_STDERR ]]; then
+        rm -f "$FAILED_STDERR" 2> /dev/null
+    fi
+    if [[ -n $COMPLETE_PID ]]; then
+        kill "$COMPLETE_PID" 2> /dev/null
+    fi
+    if [[ -n $FAILED_PID ]]; then
+        kill "$FAILED_PID" 2> /dev/null
+    fi
+}
+trap cleanup EXIT
 
-kubectl wait job "$@" --for=condition=failed > /dev/null &
+# Create temporary files to store stderr output
+COMPLETE_STDERR=$(mktemp -t kubectl-wait-job-stderr.XXXXXXXXXX) || { echo "Failed to create temp file"; exit 3; }
+FAILED_STDERR=$(mktemp -t kubectl-wait-job-stderr.XXXXXXXXXX) || { echo "Failed to create temp file"; exit 3; }
+
+# Wait for complete and failed conditions in parallel
+kubectl wait job "$@" --for=condition=complete > /dev/null 2> "$COMPLETE_STDERR" &
+COMPLETE_PID=$!
+kubectl wait job "$@" --for=condition=failed > /dev/null 2> "$FAILED_STDERR" &
 FAILED_PID=$!
 
-# Cleanup any remaining background processes on exit
-trap 'kill "$COMPLETE_PID" "$FAILED_PID" 2>/dev/null' EXIT
-
-# Wait for one of the processes to exit
+# Wait for one of the processes to exit (using loop instead of wait -n for compatibility)
 while true; do
-    # If the process waiting for complete condition has exited, check if it was successful, kill the other process and exit
-    if ! kill -0 "$COMPLETE_PID" 2>/dev/null; then        
-        if wait "$COMPLETE_PID"; then
+    # Check if the process waiting for the job to complete has exited
+    COMPLETE_RESULT=0
+    if ! kill -0 "$COMPLETE_PID" 2>/dev/null; then
+        wait $COMPLETE_PID;
+        COMPLETE_RESULT=$?
+        if [[ $COMPLETE_RESULT -eq 0 ]]; then
             echo "Job completed successfully"
             exit 0
-        else
-            echo "error: kubectl wait failed"
-            exit 3
         fi
     fi
-    
-    # If the process waiting for failed condition has exited, check if it was successful, kill the other process and exit
+
+    # Check if the process waiting for the job to fail has exited
+    FAILED_RESULT=0
     if ! kill -0 "$FAILED_PID" 2>/dev/null; then
-        if wait "$FAILED_PID"; then
+        wait $FAILED_PID
+        FAILED_RESULT=$?
+        if [[ $FAILED_RESULT -eq 0 ]]; then
             echo "Job failed"
             exit 1
-        else
-            echo "error: kubectl wait failed"
-            exit 3
         fi
     fi
     
+    # If either process failed, print the stderr output and exit
+    if [[ $COMPLETE_RESULT -ne 0 || $FAILED_RESULT -ne 0 ]]; then
+        cat "$COMPLETE_STDERR" 2> /dev/null
+        cat "$FAILED_STDERR" 2> /dev/null
+        echo "error: kubectl wait failed"
+        exit 3
+    fi
+
+    # Sleep for a short time before checking again
     sleep 0.1
 done
