@@ -2,19 +2,19 @@
 
 A kubectl plugin to wait for a job to complete or fail.
 
-# Purpose
+## Purpose
 
 Kubectl provides a way to wait for a single condition, but when running a job, you often want to wait for one two conditions: `Complete` or `Failed`.
 
 This plugin provides a specialized wait command, specific to jobs, that waits for both conditions in parallel, and depending on which condition is met, reports the outcome of the job.
 
-# Installation
+## Installation
 
 ```
 kubectl krew install wait-job
 ```
 
-# Usage
+## Usage
 
 ```
 Usage: kubectl wait-job [ARGS] [OPTIONS]
@@ -31,7 +31,7 @@ Example:
   kubectl wait-job job-name
 ```
 
-# Exit Codes
+## Exit Codes
 
 | Exit Code | Description |
 |---|---|
@@ -40,7 +40,7 @@ Example:
 | 2 | Plugin usage error |
 | 3 | The underlying kubectl wait command failed to execute |
 
-# License and Attribution
+## License and Attribution
 
 This code is licensed under the Creative Commons Attribution-ShareAlike 4.0 International License.
 To view a copy of this license, visit http://creativecommons.org/licenses/by-sa/4.0/
